@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, '.'),
         }
       },
+      base: '/meeting-agenda-timer/',
       server: {
         port: 3000,
         host: true // oppure '0.0.0.0'
