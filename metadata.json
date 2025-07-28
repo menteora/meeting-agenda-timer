@@ -1,0 +1,5 @@
+{
+  "name": "Meeting Agenda Timer",
+  "description": "An application to keep your meetings on time and organized. Track agenda items, manage time for each topic, and export the results.",
+  "requestFramePermissions": []
+}
