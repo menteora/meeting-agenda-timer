@@ -197,7 +197,7 @@ const App: React.FC = () => {
                     };
                 }
             } catch (error) {
-                console.error("Errore durante il parsing della riga CSV:", line, error);
+                console.error("Errore during parsing della riga CSV:", line, error);
             }
             return null;
         }).filter((act): act is Activity => act !== null);
@@ -208,7 +208,132 @@ const App: React.FC = () => {
     };
     reader.readAsText(file);
 };
+
+const handleImportDataCSV = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text !== 'string') return;
+
+        const allLines = text.split('\n').map(line => line.trim().replace(/\r$/, '')).filter(Boolean);
+        if (allLines.length === 0) return;
+
+        const hasHeader = allLines[0].replace(/"/g, '').startsWith("Attività,Tempo Previsto (min),Tempo Effettivo (min),Inizio,Fine");
+        const dataLines = hasHeader ? allLines.slice(1) : allLines;
+
+        const parseItalianDate = (str: string): Date | null => {
+            if (!str || str === '-') return null;
+            // Expected format: "dd/mm/yyyy hh:mm:ss"
+            const parts = str.trim().split(/\s+/);
+            if (parts.length < 2) return null;
+            const datePart = parts[0];
+            const timePart = parts[1];
+            
+            const dateComponents = datePart.split('/').map(Number);
+            if(dateComponents.length < 3) return null;
+            const [day, month, year] = dateComponents;
+
+            const timeComponents = timePart.split(':').map(Number);
+            if(timeComponents.length < 2) return null; // hh:mm is enough
+            const [hours, minutes, seconds = 0] = timeComponents;
+            
+            if ([day, month, year, hours, minutes].some(isNaN)) {
+                return null;
+            }
+            // Date constructor month is 0-indexed
+            return new Date(year, month - 1, day, hours, minutes, seconds);
+        };
+
+        const newActivities: Activity[] = dataLines.map((line, index) => {
+            try {
+                let name = '';
+                let restOfLine = line;
+
+                if (line.startsWith('"')) {
+                    let nameEndIndex = -1;
+                    for (let i = 1; i < line.length; i++) {
+                        if (line[i] === '"') {
+                            if (i + 1 < line.length && line[i + 1] === '"') {
+                                i++; // This is an escaped quote, skip it
+                            } else {
+                                nameEndIndex = i; // This is the closing quote
+                                break;
+                            }
+                        }
+                    }
+
+                    if (nameEndIndex !== -1) {
+                        name = line.substring(1, nameEndIndex).replace(/""/g, '"');
+                        restOfLine = line.substring(nameEndIndex + 2); // +2 to skip the quote and the comma
+                    } else {
+                        return null;
+                    }
+                } else {
+                    const firstCommaIndex = line.indexOf(',');
+                    if (firstCommaIndex !== -1) {
+                        name = line.substring(0, firstCommaIndex);
+                        restOfLine = line.substring(firstCommaIndex + 1);
+                    } else {
+                        return null;
+                    }
+                }
+
+                if (!name) return null;
+
+                const parts = restOfLine.split(',');
+                if (parts.length < 4) return null; // Must have planned, actual, start, end
+
+                const plannedDurationMin = parseInt(parts[0], 10);
+                const actualDurationMinStr = parts[1];
+                const startTimeStr = parts[2];
+                const endTimeStr = parts[3];
+
+                const plannedDuration = isNaN(plannedDurationMin) ? 0 : plannedDurationMin * 60;
+                
+                const actualDuration = actualDurationMinStr && !isNaN(parseInt(actualDurationMinStr, 10)) ? parseInt(actualDurationMinStr, 10) * 60 : null;
+
+                const startTime = parseItalianDate(startTimeStr.trim());
+                const endTime = parseItalianDate(endTimeStr.trim());
+
+                const status = (actualDuration !== null || (startTime && endTime)) ? ActivityStatus.Completed : ActivityStatus.Pending;
+
+                return {
+                    id: `csv-data-${new Date().getTime()}-${index}`,
+                    name,
+                    plannedDuration,
+                    actualDuration,
+                    startTime,
+                    endTime,
+                    status,
+                };
+            } catch (error) {
+                console.error("Errore durante il parsing della riga dati CSV:", line, error);
+                return null;
+            }
+        }).filter((act): act is Activity => act !== null);
+
+        if (newActivities.length > 0) {
+            setActivities(prev => [...prev, ...newActivities]);
+            alert(`${newActivities.length} attività importate con successo.`);
+        } else {
+            alert("Nessuna attività valida trovata nel file. Controlla il formato del file e che segua la struttura: Attività,Tempo Previsto (min),Tempo Effettivo (min),Inizio,Fine");
+        }
+    };
+    reader.readAsText(file, 'utf-8');
+  };
   
+  const formatDateTimeForExport = (date: Date | null): string => {
+    if (!date) return '';
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  };
+
   const handleExportCSV = () => {
     const headers = "Attività,Tempo Previsto (min),Tempo Effettivo (min),Inizio,Fine";
     const csvContent = [
@@ -217,8 +342,8 @@ const App: React.FC = () => {
             const name = `"${act.name.replace(/"/g, '""')}"`;
             const planned = Math.round(act.plannedDuration / 60);
             const actual = act.actualDuration ? Math.round(act.actualDuration / 60) : '';
-            const start = act.startTime ? act.startTime.toLocaleString('it-IT') : '';
-            const end = act.endTime ? act.endTime.toLocaleString('it-IT') : '';
+            const start = formatDateTimeForExport(act.startTime);
+            const end = formatDateTimeForExport(act.endTime);
             return [name, planned, actual, start, end].join(',');
         })
     ].join('\n');
@@ -265,6 +390,14 @@ const App: React.FC = () => {
     }
     setActivities(prev => prev.filter(act => act.id !== id));
   };
+  
+  const handleClearData = () => {
+    setActivities([]);
+    setActiveActivityId(null);
+    setCountdown(0);
+    setSessionStartTime(null);
+    setMeetingStartTime(new Date());
+  };
 
   const handleDuplicateActivity = (id: string) => {
     const activityToDuplicate = activities.find(act => act.id === id);
@@ -304,6 +437,39 @@ const App: React.FC = () => {
       })
     );
   };
+  
+  const handleManualUpdateActivity = (id: string, field: keyof Activity, value: any) => {
+    setActivities(prev =>
+      prev.map(act => {
+        if (act.id === id) {
+          if (act.id === activeActivityId) {
+            alert("Non puoi modificare manualmente un'attività in corso.");
+            return act;
+          }
+          
+          const updatedActivity = { ...act, [field]: value };
+
+          if ((field === 'startTime' || field === 'endTime') && updatedActivity.startTime && updatedActivity.endTime) {
+              if (updatedActivity.endTime.getTime() >= updatedActivity.startTime.getTime()) {
+                  updatedActivity.actualDuration = (updatedActivity.endTime.getTime() - updatedActivity.startTime.getTime()) / 1000;
+              } else {
+                  alert("L'orario di fine non può essere precedente a quello di inizio.");
+                  return act; 
+              }
+          }
+
+          if((field === 'actualDuration' || field === 'startTime' || field === 'endTime') && value !== null) {
+              if (updatedActivity.status === ActivityStatus.Pending) {
+                updatedActivity.status = ActivityStatus.Completed;
+              }
+          }
+
+          return updatedActivity;
+        }
+        return act;
+      })
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 p-4 sm:p-6 lg:p-8">
@@ -321,6 +487,8 @@ const App: React.FC = () => {
           handleImportCSV={handleImportCSV}
           handleExportCSV={handleExportCSV}
           handleExportTemplateCSV={handleExportTemplateCSV}
+          handleImportDataCSV={handleImportDataCSV}
+          handleClearData={handleClearData}
           ignoreThreshold={ignoreThreshold}
           setIgnoreThreshold={setIgnoreThreshold}
         />
@@ -332,6 +500,7 @@ const App: React.FC = () => {
           onDeleteActivity={handleDeleteActivity}
           onDuplicateActivity={handleDuplicateActivity}
           onEditActivity={handleEditActivity}
+          onManualUpdateActivity={handleManualUpdateActivity}
         />
       </main>
        <footer className="text-center mt-8 text-slate-500 text-sm">

@@ -1,9 +1,11 @@
+
 import React, { useState } from 'react';
 import { Activity, ActivityStatus } from '../types';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CancelIcon, CheckIcon, CopyIcon, EditIcon, GripVerticalIcon, PauseIcon, PlayIcon, PlusIcon, TrashIcon } from './icons';
+import { ExportTable } from './ExportTable';
 
 const formatDuration = (seconds: number) => `${Math.round(seconds / 60)} min`;
 
@@ -126,9 +128,10 @@ interface AgendaProps {
   onDeleteActivity: (id: string) => void;
   onDuplicateActivity: (id: string) => void;
   onEditActivity: (id: string, name: string, duration: number) => void;
+  onManualUpdateActivity: (id: string, field: keyof Activity, value: any) => void;
 }
 
-export const Agenda: React.FC<AgendaProps> = ({ activities, setActivities, activeActivityId, onStartActivity, onDeleteActivity, onDuplicateActivity, onEditActivity }) => {
+export const Agenda: React.FC<AgendaProps> = ({ activities, setActivities, activeActivityId, onStartActivity, onDeleteActivity, onDuplicateActivity, onEditActivity, onManualUpdateActivity }) => {
   const [newActivityName, setNewActivityName] = useState('');
   const [newActivityDuration, setNewActivityDuration] = useState(5);
 
@@ -220,6 +223,11 @@ export const Agenda: React.FC<AgendaProps> = ({ activities, setActivities, activ
           </button>
         </form>
       </div>
+      <ExportTable 
+        activities={activities}
+        onUpdateActivity={onManualUpdateActivity}
+        activeActivityId={activeActivityId}
+      />
     </div>
   );
 };

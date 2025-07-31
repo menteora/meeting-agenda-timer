@@ -1,5 +1,6 @@
 {
-  "name": "Meeting Agenda Timer",
+  "name": "Copy of Meeting Agenda Timer v2",
   "description": "An application to keep your meetings on time and organized. Track agenda items, manage time for each topic, and export the results.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "prompt": ""
 }
